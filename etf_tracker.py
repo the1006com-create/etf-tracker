@@ -1,42 +1,31 @@
 import requests
-from bs4 import BeautifulSoup
 import pandas as pd
 import json
 import os
 import smtplib
+import time
 from email.mime.text import MIMEText
 from datetime import datetime
 
-ETF_LIST = {
-    '00981A': 'https://www.sitca.org.tw/ROC/Industry/IN2421.aspx?pid=00981A',
-    '00982A': 'https://www.sitca.org.tw/ROC/Industry/IN2421.aspx?pid=00982A',
-    '00987A': 'https://www.sitca.org.tw/ROC/Industry/IN2421.aspx?pid=00987A',
-    '00992A': 'https://www.sitca.org.tw/ROC/Industry/IN2421.aspx?pid=00992A',
-    '00980A': 'https://www.sitca.org.tw/ROC/Industry/IN2421.aspx?pid=00980A',
-    '00991A': 'https://www.sitca.org.tw/ROC/Industry/IN2421.aspx?pid=00991A',
-}
+ETF_LIST = ['00981A', '00982A', '00987A', '00992A', '00980A', '00991A']
 
 DATA_FILE = 'holdings.json'
-
 GMAIL_USER = os.environ.get('GMAIL_USER')
 GMAIL_PASS = os.environ.get('GMAIL_PASS')
 NOTIFY_EMAIL = os.environ.get('NOTIFY_EMAIL')
 
-def fetch_holdings(etf_code, url):
+def fetch_holdings(etf_code):
     try:
+        url = f'https://openapi.twse.com.tw/v1/ETF/etfPortfolio?stockNo={etf_code}'
         headers = {'User-Agent': 'Mozilla/5.0'}
-        res = requests.get(url, headers=headers, timeout=10)
-        soup = BeautifulSoup(res.text, 'html.parser')
-        tables = soup.find_all('table')
+        res = requests.get(url, headers=headers, timeout=15)
+        data = res.json()
         stocks = []
-        for table in tables:
-            rows = table.find_all('tr')
-            for row in rows:
-                cols = row.find_all('td')
-                if cols and len(cols) >= 2:
-                    code = cols[0].text.strip()
-                    if code.isdigit() and len(code) == 4:
-                        stocks.append(code)
+        for item in data:
+            code = item.get('component_security_code', '').strip()
+            if code and len(code) == 4 and code.isdigit():
+                stocks.append(code)
+        print(f'{etf_code}: 抓到 {len(stocks)} 檔')
         return list(set(stocks))
     except Exception as e:
         print(f'{etf_code} 抓取失敗: {e}')
@@ -66,14 +55,16 @@ def main():
     today = {}
     all_new = []
 
-    for etf_code, url in ETF_LIST.items():
+    for etf_code in ETF_LIST:
         print(f'正在抓取 {etf_code}...')
-        stocks = fetch_holdings(etf_code, url)
+        stocks = fetch_holdings(etf_code)
         today[etf_code] = stocks
         old = set(yesterday.get(etf_code, []))
         new = set(stocks) - old
-        for s in new:
-            all_new.append({'ETF': etf_code, '新增股票': s})
+        if old:
+            for s in new:
+                all_new.append({'ETF': etf_code, '新增股票': s})
+        time.sleep(1)
 
     save_today(today)
 
