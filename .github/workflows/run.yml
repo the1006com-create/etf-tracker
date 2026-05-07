@@ -1,0 +1,35 @@
+name: ETF Tracker
+
+on:
+  schedule:
+    - cron: '0 7 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run ETF tracker
+        env:
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_PASS: ${{ secrets.GMAIL_PASS }}
+          NOTIFY_EMAIL: ${{ secrets.NOTIFY_EMAIL }}
+        run: python etf_tracker.py
+
+      - name: Save holdings data
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add holdings.json
+          git diff --staged --quiet || git commit -m "Update holdings"
+          git push
